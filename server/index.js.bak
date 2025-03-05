@@ -1,0 +1,247 @@
+const http = require('http');
+const url = require('url');
+
+const users = {};
+const savedGames = {};
+const pvpStats = {};
+
+const getRequestBody = (req) => {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on('error', (error) => {
+      reject(error);
+    });
+  });
+};
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+  
+  const parsedUrl = url.parse(req.url, true);
+  const path = parsedUrl.pathname;
+  
+  try {
+    if (path === '/api/signup' && req.method === 'POST') {
+      const data = await getRequestBody(req);
+      const { username, password } = data;
+      
+      if (users[username]) {
+        res.end(JSON.stringify({ success: false, message: 'Username already exists' }));
+        return;
+      }
+      
+      users[username] = { password };
+      pvpStats[username] = { wins: 0, losses: 0, reputation: 100 };
+      res.end(JSON.stringify({ success: true }));
+      
+    } else if (path === '/api/login' && req.method === 'POST') {
+      const data = await getRequestBody(req);
+      const { username, password } = data;
+      
+      if (!users[username] || users[username].password !== password) {
+        res.end(JSON.stringify({ success: false, message: 'Invalid username or password' }));
+        return;
+      }
+      
+      res.end(JSON.stringify({ success: true }));
+      
+    } else if (path === '/api/savedGames' && req.method === 'GET') {
+      const { username } = parsedUrl.query;
+      
+      if (!users[username]) {
+        res.end(JSON.stringify({ success: false, message: 'User not found' }));
+        return;
+      }
+      
+      const userSaves = savedGames[username] || [];
+      res.end(JSON.stringify({ 
+        success: true, 
+        savedGames: userSaves.map((save, index) => ({
+          id: index,
+          name: save.name,
+          date: save.date
+        }))
+      }));
+      
+    } else if (path === '/api/saveGame' && req.method === 'POST') {
+      const data = await getRequestBody(req);
+      const { username, saveName, gameState } = data;
+      
+      if (!users[username]) {
+        res.end(JSON.stringify({ success: false, message: 'User not found' }));
+        return;
+      }
+      
+      if (!savedGames[username]) {
+        savedGames[username] = [];
+      }
+      
+      savedGames[username].push({
+        name: saveName,
+        date: new Date().toLocaleDateString(),
+        gameState: gameState
+      });
+      
+      res.end(JSON.stringify({ success: true }));
+      
+    } else if (path === '/api/loadGame' && req.method === 'GET') {
+      const { username, saveId } = parsedUrl.query;
+      
+      if (!users[username] || !savedGames[username]) {
+        res.end(JSON.stringify({ success: false, message: 'User or saved game not found' }));
+        return;
+      }
+      
+      const saveGame = savedGames[username][parseInt(saveId)];
+      if (!saveGame) {
+        res.end(JSON.stringify({ success: false, message: 'Save game not found' }));
+        return;
+      }
+      
+      res.end(JSON.stringify({ success: true, gameState: saveGame.gameState }));
+      
+    } else if (path === '/api/pvpStats' && req.method === 'GET') {
+      const { username } = parsedUrl.query;
+      
+      if (!users[username]) {
+        res.end(JSON.stringify({ success: false, message: 'User not found' }));
+        return;
+      }
+      
+      res.end(JSON.stringify({ 
+        success: true, 
+        stats: pvpStats[username] || { wins: 0, losses: 0, reputation: 100 }
+      }));
+      
+    } else if (path === '/api/pvpOpponents' && req.method === 'GET') {
+      const { username } = parsedUrl.query;
+      
+      if (!users[username]) {
+        res.end(JSON.stringify({ success: false, message: 'User not found' }));
+        return;
+      }
+      
+      const opponents = Object.keys(users)
+        .filter(user => user !== username)
+        .map(user => ({
+          username: user,
+          reputation: (pvpStats[user] || { reputation: 100 }).reputation
+        }));
+      
+      res.end(JSON.stringify({ success: true, opponents }));
+      
+    } else if (path === '/api/pvpBattle' && req.method === 'POST') {
+      const data = await getRequestBody(req);
+      const { username, opponent, gameState } = data;
+      
+      if (!users[username] || !users[opponent]) {
+        res.end(JSON.stringify({ success: false, message: 'User not found' }));
+        return;
+      }
+      
+      // Calculate player strength based on game state
+      const playerStrength = calculateEmpireStrength(gameState);
+      
+      // Get opponent's saved game or generate a random one
+      let opponentGameState;
+      if (savedGames[opponent] && savedGames[opponent].length > 0) {
+        opponentGameState = savedGames[opponent][0].gameState;
+      } else {
+        // Generate random opponent stats
+        opponentGameState = {
+          money: Math.floor(Math.random() * 10000) + 1000,
+          weapons: Math.floor(Math.random() * 10) + 1,
+          quality: Math.random() * 0.5 + 0.5,
+          equipmentLevel: Math.floor(Math.random() * 5) + 1
+        };
+      }
+      
+      const opponentStrength = calculateEmpireStrength(opponentGameState);
+      const playerWon = playerStrength > opponentStrength;
+      
+      // Update PvP stats
+      if (!pvpStats[username]) {
+        pvpStats[username] = { wins: 0, losses: 0, reputation: 100 };
+      }
+      if (!pvpStats[opponent]) {
+        pvpStats[opponent] = { wins: 0, losses: 0, reputation: 100 };
+      }
+      
+      if (playerWon) {
+        pvpStats[username].wins++;
+        pvpStats[username].reputation += 10;
+        pvpStats[opponent].losses++;
+        pvpStats[opponent].reputation = Math.max(0, pvpStats[opponent].reputation - 5);
+      } else {
+        pvpStats[username].losses++;
+        pvpStats[username].reputation = Math.max(0, pvpStats[username].reputation - 5);
+        pvpStats[opponent].wins++;
+        pvpStats[opponent].reputation += 10;
+      }
+      
+      // Calculate reward/loss
+      const reward = Math.floor(opponentStrength * 100);
+      const loss = Math.floor(playerStrength * 50);
+      
+      res.end(JSON.stringify({
+        success: true,
+        result: {
+          player: username,
+          opponent: opponent,
+          playerStrength,
+          opponentStrength,
+          playerWon,
+          reward,
+          loss
+        }
+      }));
+      
+    } else {
+      // Default response for unhandled endpoints
+      res.statusCode = 404;
+      res.end(JSON.stringify({ success: false, message: 'Endpoint not found' }));
+    }
+  } catch (error) {
+    console.error('Error handling request:', error);
+    res.statusCode = 500;
+    res.end(JSON.stringify({ success: false, message: 'Server error' }));
+  }
+});
+
+// Helper function to calculate empire strength for PvP
+function calculateEmpireStrength(gameState) {
+  if (!gameState) return 0;
+  
+  return (
+    (gameState.money / 1000) + 
+    (gameState.weapons * 2) + 
+    (gameState.quality * 5) + 
+    (gameState.equipmentLevel * 3) + 
+    (gameState.saulHired ? 2 : 0) + 
+    (gameState.mikeHired ? 3 : 0)
+  );
+}
+
+const PORT = 1777;
+server.listen(PORT, () => {
+  console.log(`Breaking Bad Game API server running at http://localhost:${PORT}/`);
+}); 

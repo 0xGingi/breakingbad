@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Breaking Bad Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #000000;
+            color: #00FF00;
+        }
+        #game-output {
+            background: #000000;
+            color: #00FF00;
+            padding: 15px;
+            border-radius: 5px;
+            min-height: 200px;
+            margin-bottom: 20px;
+            border: 1px solid #00FF00;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #006600;
+            color: #00FF00;
+            border: 1px solid #00FF00;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #009900;
+        }
+        #character-select, #controls, #music-controls {
+            margin-bottom: 20px;
+        }
+        h1 { color: #00FF00; }
+        #volume-slider { accent-color: #00FF00; }
+        .hidden {
+            display: none;
+        }
+        #pvp-battle-results {
+            padding: 10px;
+            margin: 10px 0;
+            min-height: 30px;
+        }
+        
+        #pvp-battle-results .success {
+            color: #00ff00;
+            font-weight: bold;
+            transition: opacity 1s;
+        }
+        
+        #pvp-battle-results .failure {
+            color: #ff6666;
+            font-weight: bold;
+            transition: opacity 1s;
+        }
+        
+        .battle-stats {
+            background: #111;
+            padding: 10px;
+            margin-top: 15px;
+            border: 1px solid #00FF00;
+            border-radius: 5px;
+        }
+        
+        .battle-stats h3 {
+            margin-top: 0;
+            color: #00FF00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Breaking Bad Simulator</h1>
+    
+    <div id="auth-container" style="display: block;">
+        <div id="login-form">
+            <h2>Login to Your Empire</h2>
+            <input type="text" id="login-username" placeholder="Username" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button onclick="loginUser()">Login</button>
+            <p>New to the game? <a href="#" onclick="toggleAuthForms()">Sign up</a></p>
+        </div>
+        
+        <div id="signup-form" style="display: none;">
+            <h2>Create Your Empire</h2>
+            <input type="text" id="signup-username" placeholder="Choose Username" required>
+            <input type="password" id="signup-password" placeholder="Choose Password" required>
+            <input type="password" id="signup-confirm-password" placeholder="Confirm Password" required>
+            <button onclick="signupUser()">Sign Up</button>
+            <p>Already have an account? <a href="#" onclick="toggleAuthForms()">Login</a></p>
+        </div>
+    </div>
+    
+    <div id="game-container" style="display: none;">
+        <div id="character-select" style="display: none;">
+            <button onclick="startGame('Walter')">Play as Walter White</button>
+            <button onclick="startGame('Jesse')">Play as Jesse Pinkman</button>
+        </div>
+        
+        <div id="game-output"></div>
+        
+        <div id="controls" style="display: none;">
+            <button onclick="startCooking()">Cook Blue Meth</button>
+            <button onclick="sellMeth()">Sell Blue Meth</button>
+            <button onclick="buyWeapons()">Buy Weapons ($200)</button>
+            <button onclick="upgradeEquipment()">Steal Methylamine ($500)</button>
+            <button onclick="hireSaul()">Hire Saul ($1000)</button>
+            <button onclick="hireMike()">Hire Mike ($1500)</button>
+            <button onclick="checkStatus()">Check Status</button>
+            <button onclick="resetLog()">Reset Log</button>
+            <button onclick="upgradeSaul()">Upgrade Saul ($15,000)</button>
+            <button onclick="enterPvPMode()">PvP Arena</button>
+            <button onclick="logout()">Logout</button>
+            <button class="hidden" id="cheatButton">Cheat Code</button>
+        </div>
+        
+        <div id="pvp-container" style="display: none;">
+            <h2>PvP Arena</h2>
+            <div id="pvp-status"></div>
+            <div id="pvp-opponents"></div>
+            <button onclick="findPvPMatch()">Find Opponent</button>
+            <button onclick="returnFromPvP()">Return to Game</button>
+            <div id="pvp-challenges"></div>
+            <div id="pvp-battle-results"></div>
+        </div>
+        
+        <div id="music-controls">
+            <audio id="background-music" loop>
+                <source src="Breaking Bad Theme Song.mp3" type="audio/mpeg">
+                Your browser does not support the audio element.
+            </audio>
+            <button onclick="toggleMusic()">Toggle Music</button>
+            <label for="volume-slider">Volume:</label>
+            <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.4" onchange="adjustVolume(this.value)">
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:1777' : 'https://bb.0xgingi.com';
+
+        const output = document.getElementById('game-output');
+        const controls = document.getElementById('controls');
+        const audio = document.getElementById('background-music');
+        let gameState = null;
+        let cheatSequence = 0; // Track secret sequence for cheat button
+        let users = JSON.parse(localStorage.getItem('bbUsers')) || {};
+        let currentUser = null;
+
+        const characters = {
+            Walter: { cookingSkill: 0.7, sellBonus: 1.0, weaponSkill: 0.8 },
+            Jesse: { cookingSkill: 0.4, sellBonus: 1.2, weaponSkill: 0.5 }
+        };
+        const villains = [
+            { name: "Krazy-8", day: 10, strength: 0.4, reward: 500 },
+            { name: "Tuco Salamanca", day: 20, strength: 0.6, reward: 1000 },
+            { name: "The Salamanca Twins", day: 30, strength: 0.7, reward: 1500 },
+            { name: "Gus Fring", day: 40, strength: 0.8, reward: 2000 },
+            { name: "Todd Alquist", day: 50, strength: 0.85, reward: 2500 },
+            { name: "Uncle Jack", day: 60, strength: 0.9, reward: 3000 },
+            { name: "Don Calderón", day: 365, strength: 1.5, reward: 10000 }
+        ];
+        const surpriseVillain = { name: "Hank Schrader", strength: 1.2, reward: 5000 };
+
+        // Add a variable to track displayed challenges
+        let displayedChallenges = new Set();
+
+        let pvpPollingInterval = null;
+
+        function toggleMusic() {
+            if (audio.paused) {
+                audio.play().catch(() => display("Click again to start the tunes—browser says no autoplay!"));
+                display("Music's on—feel the ABQ vibe!");
+            } else {
+                audio.pause();
+                display("Music's off—silence in the desert.");
+            }
+        }
+
+        function adjustVolume(value) {
+            audio.volume = value;
+            display(`Volume set to ${Math.round(value * 100)}%—tune the tension!`);
+        }
+
+        function startGame(character) {
+            gameState = {
+                character: character,
+                money: 1000,
+                meth: 0,
+                weapons: 0,
+                quality: characters[character].cookingSkill,
+                equipmentLevel: 1,
+                day: 1,
+                defeatedVillains: [],
+                saulHired: false,
+                saulUses: 0,
+                saulMaxUses: 2,
+                mikeHired: false,
+                policeHeat: 0
+            };
+            
+            document.getElementById('character-select').style.display = 'none';
+            controls.style.display = 'block';
+            output.innerHTML = '';
+            
+            if (character === "Walter") {
+                display(`Walter White, a chemistry teacher turned kingpin, steps into the Albuquerque underworld. With an old RV and a hunger for power, you whisper, "I am the one who knocks." Time to cook.`);
+            } else {
+                display(`Jesse Pinkman, yo! Fresh outta rehab and back in the game, bitch! You've got the streets in your blood and an RV ready to roll. Let's cook some blue, cap'n!`);
+            }
+            
+            checkStatus();
+            audio.volume = 0.4;
+            audio.play().catch(() => display("Music blocked—toggle it on manually!"));
+            cheatSequence = 0;
+            
+            autoSave();
+        }
+
+        function display(text) {
+            output.innerHTML += `<p>${text}</p>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function resetLog() {
+            if (gameState) {
+                output.innerHTML = '';
+                display(`Day ${gameState.day}: Log cleared—back to cooking in ABQ.`);
+                checkStatus();
+            } else {
+                output.innerHTML = '';
+                display("Log cleared. Pick a character to start fresh!");
+            }
+            // If sequence is at step 1 (after Check Status), reveal cheat button
+            if (cheatSequence === 1) {
+                const cheatButton = document.getElementById('cheatButton');
+                cheatButton.classList.remove('hidden');
+                cheatButton.onclick = enterCheatCode; // Restore click handler
+                display("A secret button appears in the shadows... Heisenberg's tricks revealed!");
+                cheatSequence = 0; // Reset sequence after revealing
+            }
+        }
+
+        function chemistryMiniGame() {
+            const target = Math.floor(Math.random() * 10) + 1;
+            const guess = prompt(`${gameState.character === "Walter" ? "Walt adjusts the Bunsen burner: " : "Jesse tweaks the rig, yo: "}Guess the pH level (1-10) for perfect Blue Meth:`);
+            if (guess === null || isNaN(parseInt(guess)) || parseInt(guess) < 1 || parseInt(guess) > 10) {
+                display("Bad input—batch burned! Try again, yo.");
+                return 0;
+            }
+            const guessNum = parseInt(guess);
+            const difference = Math.abs(target - guessNum);
+            const qualityBonus = Math.max(0, 1 - (difference * 0.1));
+            display(`${gameState.character === "Walter" ? "Walt checks the titration: " : "Jesse sniffs the batch: "}Target pH was ${target}. Your guess: ${guessNum}. Purity: ${Math.round(qualityBonus * 100)}%`);
+            return qualityBonus;
+        }
+
+        function startCooking() {
+            if (!gameState) return;
+            const batchSize = Math.floor(Math.random() * 10) + 5 + gameState.equipmentLevel;
+            const qualityBonus = chemistryMiniGame();
+            gameState.meth += batchSize;
+            gameState.quality = Math.min(1, gameState.quality * 0.8 + qualityBonus * 0.2);
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt dons the hazmat suit and cooks " : "Jesse rocks the respirator and whips up "} ${batchSize} batches of Blue Meth in the RV. ${gameState.quality > 0.9 ? "It's 99.1% pure—Heisenberg level!" : "Solid batch, yo!"}`);
+            
+            if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
+                gameState.policeHeat += 10;
+                if (gameState.policeHeat >= 200) {
+                    checkPoliceBust();
+                }
+            }
+            
+            checkVillain();
+            nextDay();
+            autoSave();
+        }
+
+        function sellMeth() {
+            if (!gameState || gameState.meth === 0) {
+                display("No Blue Meth to sling, yo!");
+                return;
+            }
+            
+            const pricePerBatch = Math.floor(100 * gameState.quality * characters[gameState.character].sellBonus);
+            const moneyEarned = pricePerBatch * gameState.meth;
+            gameState.money += moneyEarned;
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt moves " : "Jesse slings "} ${gameState.meth} batches of Blue Meth on the streets of ABQ. Pulled in $${moneyEarned}. ${gameState.character === "Walter" ? "The empire grows." : "Cash money, bitch!"}`);
+            gameState.meth = 0;
+            
+            if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
+                gameState.policeHeat += 10;
+                if (gameState.policeHeat >= 200) {
+                    checkPoliceBust();
+                }
+            }
+            
+            checkVillain();
+            autoSave();
+        }
+
+        function buyWeapons() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            if (gameState.money < 200) {
+                display("Not enough cash to arm up!");
+                return;
+            }
+            gameState.money -= 200;
+            gameState.weapons += 1;
+            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought a weapon—${gameState.weapons} in the arsenal now. ${gameState.character === "Walter" ? "Say hello to my little friend." : "Ready to roll, yo!"}`);
+            autoSave();
+        }
+
+        function upgradeEquipment() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            if (gameState.money < 500) {
+                display("Need more cash to score methylamine!");
+                return;
+            }
+            gameState.money -= 500;
+            gameState.equipmentLevel++;
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts a barrel: "}Stole methylamine! Equipment level ${gameState.equipmentLevel}. Bigger cooks ahead.`);
+            autoSave();
+        }
+
+        function hireSaul() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            if (gameState.saulHired) {
+                display("Saul's already on retainer, pal!");
+                return;
+            }
+            if (gameState.money < 1000) {
+                display("Can't afford Saul's rates yet!");
+                return;
+            }
+            gameState.money -= 1000;
+            gameState.saulHired = true;
+            gameState.saulUses = gameState.saulMaxUses; // Set uses to max (initially 2)
+            display(`${gameState.character === "Walter" ? "Walt dials the sleazy lawyer: " : "Jesse calls the sketchy dude: "}Saul Goodman struts in, business card flashing: "Better Call Saul! I'm your legal shield for $1000—${gameState.saulMaxUses} uses, baby!"`);
+            autoSave();
+        }
+
+        function hireMike() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            if (gameState.mikeHired) {
+                display("Mike's already on the payroll, kid.");
+                return;
+            }
+            if (gameState.money < 1500) {
+                display("Not enough dough to bring in Mike!");
+                return;
+            }
+            gameState.money -= 1500;
+            gameState.mikeHired = true;
+            display(`${gameState.character === "Walter" ? "Walt recruits the cleaner: " : "Jesse brings in the old dude: "}Mike Ehrmantraut nods: "I'm in. $1500, and your fights just got easier." Weapon strength boosted!`);
+            autoSave();
+        }
+
+        function checkVillain() {
+            if (!gameState) return;
+            const currentVillain = villains.find(v => v.day === gameState.day && !gameState.defeatedVillains.includes(v.name));
+            if (currentVillain) {
+                let introText;
+                switch (currentVillain.name) {
+                    case "Krazy-8":
+                        introText = `${gameState.character === "Walter" ? "Walt spots the snitch: " : "Jesse eyes the weasel: "}Krazy-8 corners you in a parking lot: "You're stepping on toes, amigo!"`;
+                        break;
+                    case "Tuco Salamanca":
+                        introText = `${gameState.character === "Walter" ? "Walt faces the wild-eyed psycho: " : "Jesse meets the crazy dude: "}Tuco Salamanca storms in, slamming fists: "Tight, tight, tight! Gimme the blue or you're done!"`;
+                        break;
+                    case "The Salamanca Twins":
+                        introText = `${gameState.character === "Walter" ? "Walt hears the axes: " : "Jesse sees the suits: "}The Salamanca Twins stalk silently: No words, just death coming your way.`;
+                        break;
+                    case "Gus Fring":
+                        introText = `${gameState.character === "Walter" ? "Walt stares down the calm killer: " : "Jesse sweats under the cold gaze: "}Gus Fring steps from the shadows of Los Pollos: "You've gone too far. End this now."`;
+                        break;
+                    case "Todd Alquist":
+                        introText = `${gameState.character === "Walter" ? "Walt meets the quiet psycho: " : "Jesse faces the creepy kid: "}Todd Alquist smiles politely: "Sorry, sir, but this ends here."`;
+                        break;
+                    case "Uncle Jack":
+                        introText = `${gameState.character === "Walter" ? "Walt confronts the neo-Nazi: " : "Jesse faces the Aryan bastard: "}Uncle Jack and his crew roll up: "Hand over the empire, or we bury you."`;
+                        break;
+                    case "Don Calderón":
+                        introText = `${gameState.character === "Walter" ? "Walt feels the earth tremble: " : "Jesse hears the whispers: "}Don Calderón, the shadowy cartel king, emerges from the desert. His presence chills the air: "Your empire ends here, Heisenberg—or Pinkman."`;
+                        break;
+                    default:
+                        introText = `${gameState.character === "Walter" ? "Walt faces off: " : "Jesse squares up: "}${currentVillain.name} confronts you!`;
+                }
+                display(introText);
+                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
+                if (playerStrength >= currentVillain.strength) {
+                    gameState.money += currentVillain.reward;
+                    gameState.defeatedVillains.push(currentVillain.name);
+                    const mikeText = gameState.mikeHired ? " and Mike" : "";
+                    const verb = gameState.mikeHired ? "overpower" : "overpowers";
+                    display(`${gameState.character}${mikeText} ${verb} ${currentVillain.name}! Gained $${currentVillain.reward}. ${currentVillain.name === "Don Calderón" ? "The desert falls silent—your legend is eternal." : (currentVillain.name === "Uncle Jack" ? "The desert runs red." : "One less problem in ABQ.")}`);
+                    if (currentVillain.name === "Don Calderón") {
+                        display("Congratulations! You've defeated the final boss and become the ultimate kingpin of Albuquerque. Game Over—Victory!");
+                        gameState = null;
+                        controls.style.display = 'none';
+                        document.getElementById('character-select').style.display = 'block';
+                        display("Select a character to start a new empire. (Use Reset Log to clear the screen.)");
+                    }
+                    // Start Police Heat after defeating Tuco
+                    if (currentVillain.name === "Tuco Salamanca") {
+                        gameState.policeHeat = 0;
+                        display("The DEA is sniffing around after Tuco—Police Heat begins to rise!");
+                    }
+                } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
+                    gameState.money -= 500;
+                    gameState.saulUses--;
+                    display(`Saul slides in with a grin: "Don't worry, I've got a guy! $500 and some paperwork later, you're free from ${currentVillain.name}." Saul uses left: ${gameState.saulUses}.`);
+                    gameState.defeatedVillains.push(currentVillain.name);
+                } else {
+                    display(`${currentVillain.name} overwhelms you! ${gameState.character === "Walter" ? "The empire crumbles." : "Game over, bitch!"}`);
+                    gameState = null;
+                    controls.style.display = 'none';
+                    document.getElementById('character-select').style.display = 'block';
+                    display("Select a character to restart. (Use Reset Log to clear the screen.)");
+                }
+            }
+
+            if (gameState && gameState.day > 60 && gameState.money >= 10000 && gameState.defeatedVillains.length >= 2 && !gameState.defeatedVillains.includes(surpriseVillain.name) && Math.random() < 0.1) {
+                display(`${gameState.character === "Walter" ? "Walt's brother-in-law steps in: " : "Jesse's worst nightmare appears: "}Hank Schrader kicks down the door, badge gleaming: "I've got you now, Heisenberg! Time's up!"`);
+                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
+                if (playerStrength >= surpriseVillain.strength) {
+                    gameState.money += surpriseVillain.reward;
+                    gameState.defeatedVillains.push(surpriseVillain.name);
+                    const mikeText = gameState.mikeHired ? " and Mike" : "";
+                    const verb = gameState.mikeHired ? "outgun" : "outguns";
+                    display(`${gameState.character}${mikeText} ${verb} Hank Schrader! Gained $${surpriseVillain.reward}. "I'm in the empire business now!"`);
+                } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
+                    gameState.money -= 500;
+                    gameState.saulUses--;
+                    display(`Hank's got you cornered, but Saul slides in: "Not so fast, officer! $500 and a loophole later, you're out." Saul uses left: ${gameState.saulUses}.`);
+                    gameState.defeatedVillains.push(surpriseVillain.name);
+                } else {
+                    display(`Hank takes you down! ${gameState.character === "Walter" ? "The family secret ends here." : "Yo, the DEA wins, bitch!"} Game Over!`);
+                    gameState = null;
+                    controls.style.display = 'none';
+                    document.getElementById('character-select').style.display = 'block';
+                    display("Select a character to restart. (Use Reset Log to clear the screen.)");
+                }
+            }
+            autoSave();
+        }
+
+        function checkStatus() {
+            if (!gameState) return;
+            const nextVillainDay = villains.find(v => !gameState.defeatedVillains.includes(v.name))?.day || "None";
+            display(`Day ${gameState.day}: Status Report
+                ${gameState.character === "Walter" ? "Heisenberg's Lab" : "Pinkman's Operation"}
+                Cash: $${gameState.money}
+                Blue Meth: ${gameState.meth} batches
+                Purity: ${(gameState.quality * 100).toFixed(0)}%
+                Equipment Level: ${gameState.equipmentLevel}
+                Weapons: ${gameState.weapons}
+                Saul Goodman: ${gameState.saulHired ? `Hired (${gameState.saulUses}/${gameState.saulMaxUses} uses left)` : "Not hired"}
+                Mike Ehrmantraut: ${gameState.mikeHired ? "Hired" : "Not hired"}
+                Police Heat: ${gameState.policeHeat}%
+                Defeated: ${gameState.defeatedVillains.join(', ') || 'None'}
+                Next Threat: Day ${nextVillainDay}`);
+            // Secret sequence: Check Status -> Reset Log reveals cheat
+            cheatSequence = 1;
+        }
+
+        function nextDay() {
+            if (gameState) {
+                gameState.day++;
+                // Only apply Police Heat after defeating Tuco
+                if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
+                    gameState.policeHeat += 5; // Increase by 5 each day
+                    if (gameState.policeHeat >= 200) {
+                        checkPoliceBust();
+                    }
+                }
+            }
+        }
+
+        function checkPoliceBust() {
+            if (!gameState.defeatedVillains.includes("Tuco Salamanca")) return; // Only after Tuco
+            display(`${gameState.character === "Walter" ? "Hank and the DEA storm in: " : "The cops crash the lab, yo: "} "We've got you now—game over!"`);
+            if (gameState.weapons >= 10) {
+                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
+                const policeStrength = 1.0; // Base police strength, adjustable for balance
+                if (playerStrength >= policeStrength) {
+                    gameState.policeHeat = 0; // Reset Police Heat after winning
+                    const mikeText = gameState.mikeHired ? " and Mike" : "";
+                    const verb = gameState.mikeHired ? "obliterate" : "obliterates";
+                    display(`${gameState.character}${mikeText} ${verb} the DEA task force in a hail of gunfire! Police Heat neutralized.`);
+                } else {
+                    display(`${gameState.character === "Walter" ? "The DEA overpowers your arsenal—empire crumbles." : "The cops outgun you, bitch! Game Over!"}`);
+                    if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
+                        gameState.money -= 500;
+                        gameState.saulUses--;
+                        gameState.policeHeat = 0; // Reset Police Heat
+                        display(`Saul swoops in: "Relax, I've got a judge in my pocket! $500 and you're free—for now." Saul uses left: ${gameState.saulUses}.`);
+                    } else {
+                        gameState = null;
+                        controls.style.display = 'none';
+                        document.getElementById('character-select').style.display = 'block';
+                        display("Select a character to restart. (Use Reset Log to clear the screen.)");
+                    }
+                }
+            } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
+                gameState.money -= 500;
+                gameState.saulUses--;
+                gameState.policeHeat = 0; // Reset Police Heat
+                display(`Saul swoops in: "Relax, I've got a judge in my pocket! $500 and you're free—for now." Saul uses left: ${gameState.saulUses}.`);
+            } else {
+                display(`${gameState.character === "Walter" ? "The empire crumbles under DEA pressure." : "Busted, bitch! Game Over!"}`);
+                gameState = null;
+                controls.style.display = 'none';
+                document.getElementById('character-select').style.display = 'block';
+                display("Select a character to restart. (Use Reset Log to clear the screen.)");
+            }
+            autoSave();
+        }
+
+        function upgradeSaul() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            if (!gameState.saulHired) {
+                display("You need to hire Saul first, pal!");
+                return;
+            }
+            if (gameState.money < 15000) {
+                display("Not enough cash to upgrade Saul—need $15,000!");
+                return;
+            }
+            gameState.money -= 15000;
+            if (gameState.saulMaxUses === 2) {
+                // First upgrade: increase max uses to 4 and set current uses to 4
+                gameState.saulMaxUses = 4;
+                gameState.saulUses = 4;
+                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman smirks, "I've upgraded my game—now you've got 4 fresh uses for $15,000!"`);
+            } else if (gameState.saulMaxUses === 4 && gameState.saulUses === 0) {
+                // Refill uses to max (4) when depleted
+                gameState.saulUses = 4;
+                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman grins, "I've reloaded my tricks—four more uses for $15,000!"`);
+            } else {
+                display("Saul's already at max capacity—save your cash, pal!");
+            }
+            checkStatus(); // Update status to reflect changes
+            autoSave();
+        }
+
+        function enterCheatCode() {
+            if (!gameState) {
+                display("No game active—start cooking first!");
+                return;
+            }
+            const code = prompt("Enter your cheat code (case-sensitive):").toUpperCase().trim();
+            switch (code) {
+                case "HEISENBERG":
+                    gameState.money += 10000;
+                    display("Heisenberg's empire boosts your cash by $10,000!");
+                    break;
+                case "BLUE SKY":
+                    gameState.meth += 50;
+                    gameState.quality = 1.0; // 100% pure
+                    display("Blue Sky perfection—50 batches of 100% pure meth added, yo!");
+                    break;
+                case "ARMORY":
+                    gameState.weapons += 5;
+                    display("Lawson's armory delivers—5 new weapons stocked!");
+                    break;
+                case "KINGPIN":
+                    gameState.money = 50000;
+                    gameState.meth = 100;
+                    gameState.weapons = 10;
+                    gameState.quality = 1.0;
+                    gameState.defeatedVillains = [...villains.map(v => v.name), surpriseVillain.name];
+                    gameState.policeHeat = 0; // Reset Police Heat for kingpin
+                    gameState.saulMaxUses = 4; // Set max uses to 4 for kingpin
+                    gameState.saulUses = 4; // Set current uses to max
+                    display("You're the kingpin now! Max cash, meth, weapons, and all villains defeated!");
+                    break;
+                case "TIMEJUMP":
+                    const newDay = parseInt(prompt("Enter the day to jump to (1-365):"));
+                    if (isNaN(newDay) || newDay < 1 || newDay > 365) {
+                        display("Invalid day—stick to 1-365, yo!");
+                        break;
+                    }
+                    gameState.day = newDay;
+                    // Maintain defeated villains (ensure consistency with day)
+                    villains.forEach(villain => {
+                        if (villain.day <= newDay && !gameState.defeatedVillains.includes(villain.name)) {
+                            gameState.defeatedVillains.push(villain.name);
+                        }
+                    });
+                    if (newDay > 20 && gameState.defeatedVillains.includes("Tuco Salamanca")) {
+                        gameState.policeHeat = Math.min(200, gameState.policeHeat + (newDay - 20) * 5); // Add 5 per day after Tuco
+                    } else {
+                        gameState.policeHeat = 0; // Reset if before or without Tuco
+                    }
+                    if (gameState.policeHeat >= 200) {
+                        checkPoliceBust();
+                    }
+                    display(`Time jumped to Day ${newDay}! Check your status for updates.`);
+                    break;
+                default:
+                    display("Invalid cheat code—try again, or stick to the streets, bitch!");
+            }
+            checkStatus(); // Update status to reflect changes
+            autoSave();
+        }
+
+        function toggleAuthForms() {
+            const loginForm = document.getElementById('login-form');
+            const signupForm = document.getElementById('signup-form');
+            
+            if (loginForm.style.display === 'none') {
+                loginForm.style.display = 'block';
+                signupForm.style.display = 'none';
+            } else {
+                loginForm.style.display = 'none';
+                signupForm.style.display = 'block';
+            }
+        }
+
+        function signupUser() {
+            const username = document.getElementById('signup-username').value;
+            const password = document.getElementById('signup-password').value;
+            const confirmPassword = document.getElementById('signup-confirm-password').value;
+            
+            if (!username || !password) {
+                alert("Please fill in all fields");
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                alert("Passwords don't match");
+                return;
+            }
+            
+            fetch(`${API_BASE_URL}/api/signup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert("Account created! Please login.");
+                    toggleAuthForms();
+                } else {
+                    alert(data.message || "Username already exists");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("Error creating account. Please try again.");
+            });
+        }
+
+        function loginUser() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (!username || !password) {
+                alert("Please fill in all fields");
+                return;
+            }
+            
+            fetch(`${API_BASE_URL}/api/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentUser = username;
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('game-container').style.display = 'block';
+                    
+                    display(`Welcome back, ${username}! Your empire awaits.`);
+                    
+                    // Load the user's game or show character select
+                    loadUserGame();
+                } else {
+                    alert(data.message || "Invalid username or password");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("Error logging in. Please try again.");
+            });
+        }
+
+        function loadUserGame() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/loadGame?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.gameState) {
+                    gameState = data.gameState;
+                    controls.style.display = 'block';
+                    output.innerHTML = '';
+                    
+                    display(`Game loaded: Day ${gameState.day} - ${gameState.character}`);
+                    checkStatus();
+                } else {
+                    document.getElementById('character-select').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('character-select').style.display = 'block';
+            });
+        }
+
+        function logout() {
+            currentUser = null;
+            gameState = null;
+            
+            // Clear PvP polling on logout
+            if (pvpPollingInterval) {
+                clearInterval(pvpPollingInterval);
+                pvpPollingInterval = null;
+            }
+            
+            // Reset displayed challenges tracking
+            displayedChallenges.clear();
+            
+            document.getElementById('auth-container').style.display = 'block';
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('character-select').style.display = 'none';
+            document.getElementById('controls').style.display = 'none';
+            document.getElementById('pvp-container').style.display = 'none';
+            output.innerHTML = '';
+        }
+
+        function enterPvPMode() {
+            if (!currentUser || !gameState) {
+                display("You need an active game to enter PvP!");
+                return;
+            }
+            
+            document.getElementById('controls').style.display = 'none';
+            document.getElementById('pvp-container').style.display = 'block';
+            
+            fetchPvPStatus();
+            checkBattleResults();
+            startPvPPolling();
+        }
+
+        function fetchPvPStatus() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/pvpStats?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updatePvPStatus(data.stats);
+                } else {
+                    alert("Error fetching PvP stats. Please try again.");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("Error fetching PvP stats. Please try again.");
+            });
+        }
+
+        function updatePvPStatus(stats) {
+            if (!currentUser) return;
+            
+            document.getElementById('pvp-status').innerHTML = `
+                <p>PvP Stats for ${currentUser}</p>
+                <p>Wins: ${stats.wins} | Losses: ${stats.losses}</p>
+                <p>Reputation: ${stats.reputation}</p>
+                <p>Current Empire Value: $${calculateEmpireValue()}</p>
+            `;
+        }
+
+        function calculateEmpireValue() {
+            if (!gameState) return 0;
+            
+            return gameState.money + 
+                   (gameState.meth * 100 * gameState.quality) + 
+                   (gameState.weapons * 200) + 
+                   (gameState.equipmentLevel * 500) + 
+                   (gameState.saulHired ? 1000 : 0) + 
+                   (gameState.mikeHired ? 1500 : 0);
+        }
+
+        function findPvPMatch() {
+            if (!currentUser || !gameState) return;
+            
+            fetch(`${API_BASE_URL}/api/pvpOpponents?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayPvPOpponents(data.opponents);
+                } else {
+                    display("No other players available for PvP!");
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                display("Error finding opponents. Please try again.");
+            });
+        }
+
+        function displayPvPOpponents(opponents) {
+            document.getElementById('pvp-opponents').innerHTML = '';
+            
+            if (opponents.length === 0) {
+                display("No other players available for PvP!");
+                return;
+            }
+            
+            opponents.forEach(opponent => {
+                const opponentBtn = document.createElement('button');
+                opponentBtn.textContent = `Challenge ${opponent.username} (Rep: ${opponent.reputation})`;
+                opponentBtn.onclick = () => initiateChallenge(opponent.username);
+                document.getElementById('pvp-opponents').appendChild(opponentBtn);
+            });
+        }
+
+        function initiateChallenge(opponent) {
+            if (!currentUser || !gameState) return;
+            
+            fetch(`${API_BASE_URL}/api/createPvPChallenge`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: currentUser,
+                    opponent: opponent
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateBattleStatus(`Challenge sent to ${opponent}! Waiting for their response...`, true);
+                    
+                    // Set up an immediate check for this specific challenge
+                    const challengeId = data.challengeId;
+                    const checkAcceptance = setInterval(() => {
+                        fetch(`${API_BASE_URL}/api/challengeStatus?challengeId=${challengeId}`)
+                        .then(response => response.json())
+                        .then(statusData => {
+                            if (statusData.status === 'accepted') {
+                                clearInterval(checkAcceptance);
+                                updateBattleStatus(`${opponent} accepted your challenge! Battle starting...`, true);
+                                
+                                // Poll immediately for battle results for this challenge
+                                const checkResults = setInterval(() => {
+                                    fetch(`${API_BASE_URL}/api/challengeResult?challengeId=${challengeId}`)
+                                    .then(response => response.json())
+                                    .then(resultData => {
+                                        if (resultData.success && resultData.result) {
+                                            clearInterval(checkResults);
+                                            displayBattleResults(resultData.result);
+                                        }
+                                    });
+                                }, 1000); // Check every second for quick feedback
+                                
+                                // Stop checking after 30 seconds max
+                                setTimeout(() => clearInterval(checkResults), 30000);
+                            }
+                            else if (statusData.status === 'rejected') {
+                                clearInterval(checkAcceptance);
+                                updateBattleStatus(`${opponent} declined your challenge.`, false);
+                            }
+                            else if (statusData.status === 'completed') {
+                                clearInterval(checkAcceptance);
+                                // The battle already happened, get results
+                                fetch(`${API_BASE_URL}/api/challengeResult?challengeId=${challengeId}`)
+                                .then(response => response.json())
+                                .then(resultData => {
+                                    if (resultData.success && resultData.result) {
+                                        displayBattleResults(resultData.result);
+                                    }
+                                });
+                            }
+                        });
+                    }, 2000); // Check every 2 seconds
+                    
+                    // Stop checking after 2 minutes max
+                    setTimeout(() => clearInterval(checkAcceptance), 120000);
+                } else {
+                    updateBattleStatus(`Failed to challenge ${opponent}: ${data.message}`, false);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateBattleStatus("Error challenging opponent. Please try again.", false);
+            });
+        }
+
+        function checkPendingChallenges() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/pendingChallenges?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.challenges.length > 0) {
+                    // Filter out challenges we've already displayed
+                    const newChallenges = data.challenges.filter(challenge => !displayedChallenges.has(challenge.id));
+                    
+                    if (newChallenges.length > 0) {
+                        displayPendingChallenges(newChallenges);
+                        
+                        // Add these challenge IDs to our tracking set
+                        newChallenges.forEach(challenge => displayedChallenges.add(challenge.id));
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function displayPendingChallenges(challenges) {
+            const challengesDiv = document.createElement('div');
+            challengesDiv.className = 'pending-challenges';
+            challengesDiv.innerHTML = '<h3>Pending PvP Challenges</h3>';
+            
+            challenges.forEach(challenge => {
+                const challengeItem = document.createElement('div');
+                challengeItem.className = 'challenge-item';
+                
+                const label = document.createElement('span');
+                label.textContent = `${challenge.challenger} wants to battle!`;
+                
+                const acceptBtn = document.createElement('button');
+                acceptBtn.textContent = 'Accept';
+                acceptBtn.onclick = () => respondToChallenge(challenge.id, true);
+                
+                const rejectBtn = document.createElement('button');
+                rejectBtn.textContent = 'Decline';
+                rejectBtn.onclick = () => respondToChallenge(challenge.id, false);
+                
+                challengeItem.appendChild(label);
+                challengeItem.appendChild(acceptBtn);
+                challengeItem.appendChild(rejectBtn);
+                
+                challengesDiv.appendChild(challengeItem);
+            });
+            
+            document.body.appendChild(challengesDiv);
+        }
+
+        function respondToChallenge(challengeId, accept) {
+            if (!currentUser) return;
+            
+            // Remove this challenge from our tracking set
+            displayedChallenges.delete(challengeId);
+            
+            fetch(`${API_BASE_URL}/api/respondToChallenge`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: currentUser,
+                    challengeId: challengeId,
+                    accept: accept
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (accept) {
+                        updateBattleStatus("Challenge accepted! Preparing for battle...", true);
+                        startPvPBattle(challengeId);
+                    } else {
+                        updateBattleStatus("Challenge declined.", false);
+                    }
+                    
+                    // Remove challenge notification
+                    const challenges = document.querySelector('.pending-challenges');
+                    if (challenges) {
+                        document.body.removeChild(challenges);
+                    }
+                } else {
+                    updateBattleStatus("Error responding to challenge. Please try again.", false);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateBattleStatus("Error responding to challenge. Please try again.", false);
+            });
+        }
+
+        function startPvPBattle(challengeId) {
+            if (!currentUser || !gameState) return;
+            
+            fetch(`${API_BASE_URL}/api/pvpBattle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: currentUser,
+                    challengeId: challengeId,
+                    gameState: gameState
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayBattleResults(data.result);
+                } else {
+                    display(`Battle failed: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                display("Error in battle. Please try again.");
+            });
+        }
+
+        function checkBattleResults() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/battleResults?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.results.length > 0) {
+                    // Show recent battles in PvP status area
+                    const recentBattles = document.createElement('div');
+                    recentBattles.innerHTML = '<h3>Recent Battles</h3>';
+                    
+                    data.results.slice(0, 3).forEach(result => {
+                        const battleItem = document.createElement('div');
+                        
+                        const opponent = result.player === currentUser ? result.opponent : result.player;
+                        const playerWon = (result.player === currentUser && result.playerWon) || 
+                                    (result.player !== currentUser && !result.playerWon);
+                        
+                        battleItem.textContent = `${playerWon ? 'Victory' : 'Defeat'} vs ${opponent}`;
+                        recentBattles.appendChild(battleItem);
+                    });
+                    
+                    const pvpStatus = document.getElementById('pvp-status');
+                    pvpStatus.appendChild(recentBattles);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Add this function to check for completed challenges
+        function checkCompletedChallenges() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/completedChallenges?username=${currentUser}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.challenges.length > 0) {
+                    // Show the most recent completed challenge result
+                    const challenge = data.challenges[0];
+                    
+                    // Apply the result to the current game state
+                    const result = challenge.result;
+                    if (result.player === currentUser) {
+                        if (result.playerWon) {
+                            gameState.money += result.reward;
+                            updateBattleStatus(`Victory! You defeated ${result.opponent}'s empire and earned $${result.reward}!`, true);
+                        } else {
+                            gameState.money = Math.max(0, gameState.money - result.loss);
+                            updateBattleStatus(`Defeat! ${result.opponent}'s empire was too strong. You lost $${result.loss}.`, false);
+                        }
+                    } else {
+                        if (result.playerWon) {
+                            gameState.money = Math.max(0, gameState.money - result.loss);
+                            updateBattleStatus(`Defeat! ${result.player}'s empire was too strong. You lost $${result.loss}.`, false);
+                        } else {
+                            gameState.money += result.reward;
+                            updateBattleStatus(`Victory! You defeated ${result.player}'s empire and earned $${result.reward}!`, true);
+                        }
+                    }
+                    
+                    // Update UI and save game (SILENTLY)
+                    updateStatusSilently();
+                    autoSave();
+                    
+                    // Also update PvP stats
+                    fetchPvPStatus();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Update the startPvPPolling function to also check for completed challenges
+        function startPvPPolling() {
+            // Stop any existing polling
+            if (pvpPollingInterval) {
+                clearInterval(pvpPollingInterval);
+            }
+            
+            // Check for challenges and completed battles every 10 seconds
+            pvpPollingInterval = setInterval(() => {
+                checkPendingChallenges();
+                checkCompletedChallenges();
+            }, 10000);
+            
+            // Do immediate checks
+            checkPendingChallenges();
+            checkCompletedChallenges();
+        }
+
+        function returnFromPvP() {
+            // Clear PvP polling when leaving PvP mode
+            if (pvpPollingInterval) {
+                clearInterval(pvpPollingInterval);
+                pvpPollingInterval = null;
+            }
+            
+            document.getElementById('pvp-container').style.display = 'none';
+            document.getElementById('controls').style.display = 'block';
+        }
+
+        function autoSave() {
+            if (!currentUser || !gameState) return;
+            
+            fetch(`${API_BASE_URL}/api/saveGame`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: currentUser,
+                    saveName: `AutoSave-${currentUser}`,
+                    gameState: gameState
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    console.error("Error auto-saving game:", data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error auto-saving:', error);
+            });
+        }
+
+        function displayBattleResults(result) {
+            // Determine if the current user is the "player" in the result or the "opponent"
+            const isPlayer = result.player === currentUser;
+            
+            // If this user is not the "player" in the result, flip the win/loss perspective
+            const playerWon = isPlayer ? result.playerWon : !result.playerWon;
+            const playerStrength = isPlayer ? result.playerStrength : result.opponentStrength;
+            const opponentStrength = isPlayer ? result.opponentStrength : result.playerStrength;
+            const opponent = isPlayer ? result.opponent : result.player;
+            
+            // Update player's money based on the correct perspective
+            if (playerWon) {
+                gameState.money += result.reward;
+                updateBattleStatus(`Victory! You defeated ${opponent}'s empire and earned $${result.reward}!`, true);
+            } else {
+                gameState.money = Math.max(0, gameState.money - result.loss);
+                updateBattleStatus(`Defeat! ${opponent}'s empire was too strong. You lost $${result.loss}.`, false);
+            }
+            
+            // Update battle stats display
+            updateBattleStats(opponent, playerStrength, opponentStrength, playerWon);
+            
+            // Update PvP stats without cluttering the log
+            fetchPvPStatus();
+            
+            // Save game state
+            autoSave();
+            
+            // Update the game status SILENTLY without adding to the log
+            updateStatusSilently();
+        }
+
+        // Helper function to update battle stats display
+        function updateBattleStats(opponent, playerStrength, opponentStrength, playerWon) {
+            const battleSummary = document.getElementById('pvp-battle-stats');
+            const statsHTML = `
+                <h3>Last Battle Summary</h3>
+                <p>You vs ${opponent}</p>
+                <p>Your Strength: ${playerStrength.toFixed(2)}</p>
+                <p>${opponent}'s Strength: ${opponentStrength.toFixed(2)}</p>
+                <p>Result: ${playerWon ? 'Victory' : 'Defeat'}</p>
+                <p>Your Money: $${gameState.money}</p>
+            `;
+            
+            if (!battleSummary) {
+                const stats = document.createElement('div');
+                stats.id = 'pvp-battle-stats';
+                stats.className = 'battle-stats';
+                stats.innerHTML = statsHTML;
+                document.getElementById('pvp-status').appendChild(stats);
+            } else {
+                battleSummary.innerHTML = statsHTML;
+            }
+        }
+
+        // Add this function to update the battle status in a contained area
+        function updateBattleStatus(message, isSuccess) {
+            const battleStatus = document.getElementById('pvp-battle-results');
+            battleStatus.innerHTML = `<div class="${isSuccess ? 'success' : 'failure'}">${message}</div>`;
+            
+            // Make it fade after 10 seconds
+            setTimeout(() => {
+                const div = battleStatus.querySelector('div');
+                if (div) {
+                    div.style.opacity = '0.6';
+                }
+            }, 10000);
+        }
+
+        // Add this new function for silent status updates during PvP
+        function updateStatusSilently() {
+            // Update UI elements without displaying messages
+            if (gameState) {
+                document.title = `Day ${gameState.day}: $${gameState.money} - Breaking Bad`;
+                
+                // We could also update other UI elements here if needed
+                // But we're not calling the display() function
+            }
+        }
+    </script>
+</body>
+</html>
