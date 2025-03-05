@@ -3,12 +3,24 @@ const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const bodyParser = require('body-parser');
 const path = require('path');
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 
 const app = express();
 const port = process.env.PORT || 1777;
 
 app.use(bodyParser.json());
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Enable CORS for the frontend
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin);
+    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    next();
+});
 
 // Database setup
 const dbPath = path.join(__dirname, 'data', 'breakingbad.db');
@@ -21,6 +33,16 @@ db.serialize(() => {
         username TEXT UNIQUE,
         password TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    
+    // Sessions table for cookie auth
+    db.run(`CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        token TEXT UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
     )`);
     
     // Saved games table
@@ -107,7 +129,6 @@ app.post('/api/login', (req, res) => {
         return res.json({ success: false, message: 'Username and password are required' });
     }
     
-    // Get user
     db.get('SELECT id, password FROM users WHERE username = ?', [username], (err, row) => {
         if (err) {
             return res.json({ success: false, message: 'Database error' });
@@ -117,15 +138,70 @@ app.post('/api/login', (req, res) => {
             return res.json({ success: false, message: 'Invalid username or password' });
         }
         
-        // Compare password
         bcrypt.compare(password, row.password, (err, result) => {
             if (err || !result) {
                 return res.json({ success: false, message: 'Invalid username or password' });
             }
             
-            res.json({ success: true, userId: row.id });
+            // Generate session token
+            const token = crypto.randomBytes(64).toString('hex');
+            const expires = new Date();
+            expires.setDate(expires.getDate() + 30); // Token valid for 30 days
+            
+            // Store token in database
+            db.run('INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)', 
+                [row.id, token, expires.toISOString()], function(err) {
+                if (err) {
+                    return res.json({ success: false, message: 'Error creating session' });
+                }
+                
+                // Set cookie
+                res.cookie('bb_session', token, { 
+                    expires: expires,
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: 'lax'
+                });
+                
+                res.json({ success: true, userId: row.id, username: username });
+            });
         });
     });
+});
+
+app.get('/api/verifySession', (req, res) => {
+    const token = req.cookies.bb_session;
+    
+    if (!token) {
+        return res.json({ success: false, message: 'No session found' });
+    }
+    
+    db.get(`
+        SELECT s.id, s.user_id, u.username 
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.token = ? AND s.expires_at > datetime('now')
+    `, [token], (err, row) => {
+        if (err || !row) {
+            return res.json({ success: false, message: 'Invalid or expired session' });
+        }
+        
+        res.json({ success: true, userId: row.user_id, username: row.username });
+    });
+});
+
+app.post('/api/logout', (req, res) => {
+    const token = req.cookies.bb_session;
+    
+    if (token) {
+        // Remove session from database
+        db.run('DELETE FROM sessions WHERE token = ?', [token]);
+        
+        // Clear cookie
+        res.clearCookie('bb_session');
+    }
+    
+    res.json({ success: true });
 });
 
 app.get('/api/savedGames', (req, res) => {

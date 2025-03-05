@@ -676,7 +676,7 @@
             const password = document.getElementById('login-password').value;
             
             if (!username || !password) {
-                alert("Please fill in all fields");
+                display("Username and password required!");
                 return;
             }
             
@@ -685,26 +685,24 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    currentUser = username;
+                    currentUser = data.username;
                     document.getElementById('auth-container').style.display = 'none';
                     document.getElementById('game-container').style.display = 'block';
-                    
-                    display(`Welcome back, ${username}! Your empire awaits.`);
-                    
-                    // Load the user's game or show character select
-                    loadUserGame();
+                    document.getElementById('character-select').style.display = 'block';
+                    loadGame();
                 } else {
-                    alert(data.message || "Invalid username or password");
+                    display(`Login failed: ${data.message}`);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert("Error logging in. Please try again.");
+                display("Error logging in. Please try again.");
             });
         }
 
@@ -732,24 +730,24 @@
         }
 
         function logout() {
-            currentUser = null;
-            gameState = null;
-            
-            // Clear PvP polling on logout
-            if (pvpPollingInterval) {
-                clearInterval(pvpPollingInterval);
-                pvpPollingInterval = null;
-            }
-            
-            // Reset displayed challenges tracking
-            displayedChallenges.clear();
-            
-            document.getElementById('auth-container').style.display = 'block';
-            document.getElementById('game-container').style.display = 'none';
-            document.getElementById('character-select').style.display = 'none';
-            document.getElementById('controls').style.display = 'none';
-            document.getElementById('pvp-container').style.display = 'none';
-            output.innerHTML = '';
+            fetch(`${API_BASE_URL}/api/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                currentUser = null;
+                gameState = null;
+                document.getElementById('game-container').style.display = 'none';
+                document.getElementById('auth-container').style.display = 'block';
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('signup-form').style.display = 'none';
+                output.innerHTML = '';
+                display("You've been logged out.");
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
 
         function enterPvPMode() {
@@ -1148,6 +1146,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     username: currentUser,
                     saveName: `AutoSave-${currentUser}`,
@@ -1243,6 +1242,62 @@
                 // We could also update other UI elements here if needed
                 // But we're not calling the display() function
             }
+        }
+
+        // Add a function to check session on page load
+        function checkSession() {
+            fetch(`${API_BASE_URL}/api/verifySession`, {
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentUser = data.username;
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('game-container').style.display = 'block';
+                    document.getElementById('character-select').style.display = 'block';
+                    loadGame();
+                }
+            })
+            .catch(error => {
+                console.error('Error checking session:', error);
+            });
+        }
+
+        // Call checkSession on page load - add this to your initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSession();
+        });
+
+        // Add this function after loadUserGame()
+        function loadGame() {
+            if (!currentUser) return;
+            
+            fetch(`${API_BASE_URL}/api/loadGame?username=${currentUser}`, {
+                credentials: 'include' // Important for cookies
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.gameState) {
+                    gameState = data.gameState;
+                    controls.style.display = 'block';
+                    document.getElementById('character-select').style.display = 'none';
+                    output.innerHTML = '';
+                    
+                    display(`Welcome back, ${currentUser}! Your empire awaits.`);
+                    display(`Game loaded: Day ${gameState.day} - ${gameState.character}`);
+                    checkStatus();
+                } else {
+                    // No saved game found, show character selection
+                    document.getElementById('character-select').style.display = 'block';
+                    display(`Welcome, ${currentUser}! Choose your character to start your empire.`);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading game:', error);
+                document.getElementById('character-select').style.display = 'block';
+                display("Error loading saved game. Please start a new game.");
+            });
         }
     </script>
 </body>
