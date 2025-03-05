@@ -17,8 +17,10 @@
             padding: 15px;
             border-radius: 5px;
             min-height: 200px;
+            max-height: 400px;
             margin-bottom: 20px;
             border: 1px solid #00FF00;
+            overflow-y: auto;
         }
         button {
             padding: 10px 20px;
@@ -69,6 +71,29 @@
         .battle-stats h3 {
             margin-top: 0;
             color: #00FF00;
+        }
+        .purchase-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .purchase-group button {
+            flex: 1;
+            min-width: 150px;
+        }
+        #game-output::-webkit-scrollbar {
+            width: 8px;
+        }
+        #game-output::-webkit-scrollbar-track {
+            background: #111;
+        }
+        #game-output::-webkit-scrollbar-thumb {
+            background: #00AA00;
+            border-radius: 4px;
+        }
+        #game-output::-webkit-scrollbar-thumb:hover {
+            background: #00FF00;
         }
     </style>
 </head>
@@ -184,6 +209,34 @@
             display(`Volume set to ${Math.round(value * 100)}%—tune the tension!`);
         }
 
+        function updateControlsWithQuantityButtons() {
+            const controlsDiv = document.getElementById('controls');
+            
+            // First save all the current buttons that we don't want to modify
+            const currentButtons = controlsDiv.innerHTML;
+            
+            // Now replace the entire contents with our modified version
+            controlsDiv.innerHTML = currentButtons.replace(
+                '<button onclick="buyWeapons()">Buy Weapons ($200)</button>',
+                `<div class="purchase-group">
+                    <button onclick="buyWeapons(1)">Buy 1x Weapon ($200)</button>
+                    <button onclick="buyWeapons(5)">Buy 5x Weapons ($1000)</button>
+                    <button onclick="buyWeapons(10)">Buy 10x Weapons ($2000)</button>
+                    <button onclick="buyWeapons(100)">Buy 100x Weapons ($20000)</button>
+                </div>`
+            ).replace(
+                '<button onclick="upgradeEquipment()">Steal Methylamine ($500)</button>',
+                `<div class="purchase-group">
+                    <button onclick="upgradeEquipment(1)">Steal 1x Methylamine ($500)</button>
+                    <button onclick="upgradeEquipment(5)">Steal 5x Methylamine ($2500)</button>
+                    <button onclick="upgradeEquipment(10)">Steal 10x Methylamine ($5000)</button>
+                    <button onclick="upgradeEquipment(100)">Steal 100x Methylamine ($50000)</button>
+                </div>`
+            );
+            
+            console.log("Controls updated with quantity buttons");
+        }
+
         function startGame(character) {
             gameState = {
                 character: character,
@@ -215,6 +268,9 @@
             audio.volume = 0.4;
             audio.play().catch(() => display("Music blocked—toggle it on manually!"));
             cheatSequence = 0;
+            
+            // Replace buttons with quantity buttons using our direct approach
+            updateControlsWithQuantityButtons();
             
             autoSave();
         }
@@ -300,33 +356,39 @@
             autoSave();
         }
 
-        function buyWeapons() {
+        function buyWeapons(quantity = 1) {
             if (!gameState) {
                 display("No game active—start cooking first!");
                 return;
             }
-            if (gameState.money < 200) {
-                display("Not enough cash to arm up!");
+            
+            const cost = 200 * quantity;
+            if (gameState.money < cost) {
+                display(`Not enough cash to buy ${quantity} weapon${quantity > 1 ? 's' : ''}! Need $${cost}.`);
                 return;
             }
-            gameState.money -= 200;
-            gameState.weapons += 1;
-            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought a weapon—${gameState.weapons} in the arsenal now. ${gameState.character === "Walter" ? "Say hello to my little friend." : "Ready to roll, yo!"}`);
+            
+            gameState.money -= cost;
+            gameState.weapons += quantity;
+            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought ${quantity} weapon${quantity > 1 ? 's' : ''}—${gameState.weapons} in the arsenal now. ${gameState.character === "Walter" ? "Say hello to my little friend." : "Ready to roll, yo!"}`);
             autoSave();
         }
 
-        function upgradeEquipment() {
+        function upgradeEquipment(quantity = 1) {
             if (!gameState) {
                 display("No game active—start cooking first!");
                 return;
             }
-            if (gameState.money < 500) {
-                display("Need more cash to score methylamine!");
+            
+            const cost = 500 * quantity;
+            if (gameState.money < cost) {
+                display(`Need more cash to score ${quantity} methylamine barrels! Need $${cost}.`);
                 return;
             }
-            gameState.money -= 500;
-            gameState.equipmentLevel++;
-            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts a barrel: "}Stole methylamine! Equipment level ${gameState.equipmentLevel}. Bigger cooks ahead.`);
+            
+            gameState.money -= cost;
+            gameState.equipmentLevel += quantity;
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts barrels: "}Stole ${quantity} methylamine barrel${quantity > 1 ? 's' : ''}! Equipment level ${gameState.equipmentLevel}. Bigger cooks ahead.`);
             autoSave();
         }
 
@@ -1267,6 +1329,18 @@
         // Call checkSession on page load - add this to your initialization
         document.addEventListener('DOMContentLoaded', function() {
             checkSession();
+            
+            // Force scrollable output setup
+            const output = document.getElementById('game-output');
+            if (output) {
+                output.style.maxHeight = '400px';
+                output.style.overflowY = 'auto';
+            }
+            
+            // Setup quantity buttons if game is already active
+            if (gameState) {
+                updateControlsWithQuantityButtons();
+            }
         });
 
         // Add this function after loadUserGame()
@@ -1287,6 +1361,9 @@
                     display(`Welcome back, ${currentUser}! Your empire awaits.`);
                     display(`Game loaded: Day ${gameState.day} - ${gameState.character}`);
                     checkStatus();
+                    
+                    // Replace buttons with quantity buttons
+                    updateControlsWithQuantityButtons();
                 } else {
                     // No saved game found, show character selection
                     document.getElementById('character-select').style.display = 'block';
