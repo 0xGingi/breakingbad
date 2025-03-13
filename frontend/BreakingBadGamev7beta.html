@@ -212,25 +212,21 @@
         function updateControlsWithQuantityButtons() {
             const controlsDiv = document.getElementById('controls');
             
-            // First save all the current buttons that we don't want to modify
             const currentButtons = controlsDiv.innerHTML;
             
-            // Now replace the entire contents with our modified version
             controlsDiv.innerHTML = currentButtons.replace(
                 '<button onclick="buyWeapons()">Buy Weapons ($200)</button>',
                 `<div class="purchase-group">
-                    <button onclick="buyWeapons(1)">Buy 1x Weapon ($200)</button>
-                    <button onclick="buyWeapons(5)">Buy 5x Weapons ($1000)</button>
-                    <button onclick="buyWeapons(10)">Buy 10x Weapons ($2000)</button>
-                    <button onclick="buyWeapons(100)">Buy 100x Weapons ($20000)</button>
+                    <button onclick="buyWeapons(1)">Buy 1x Weapon ($200+)</button>
+                    <button onclick="buyWeapons(5)">Buy 5x Weapons ($1000+)</button>
+                    <button onclick="buyWeapons(10)">Buy 10x Weapons ($2000+)</button>
                 </div>`
             ).replace(
                 '<button onclick="upgradeEquipment()">Steal Methylamine ($500)</button>',
                 `<div class="purchase-group">
-                    <button onclick="upgradeEquipment(1)">Steal 1x Methylamine ($500)</button>
-                    <button onclick="upgradeEquipment(5)">Steal 5x Methylamine ($2500)</button>
-                    <button onclick="upgradeEquipment(10)">Steal 10x Methylamine ($5000)</button>
-                    <button onclick="upgradeEquipment(100)">Steal 100x Methylamine ($50000)</button>
+                    <button onclick="upgradeEquipment(1)">Steal 1x Methylamine ($500+)</button>
+                    <button onclick="upgradeEquipment(5)">Steal 5x Methylamine ($2500+)</button>
+                    <button onclick="upgradeEquipment(10)">Steal 10x Methylamine ($5000+)</button>
                 </div>`
             );
             
@@ -315,14 +311,19 @@
 
         function startCooking() {
             if (!gameState) return;
-            const batchSize = Math.floor(Math.random() * 10) + 5 + gameState.equipmentLevel;
+            
+            const equipmentEfficiency = Math.min(1, 5 / Math.sqrt(gameState.equipmentLevel));
+            const batchSize = Math.floor((Math.random() * 10) + 5 + Math.min(100, gameState.equipmentLevel * equipmentEfficiency));
+            
             const qualityBonus = chemistryMiniGame();
             gameState.meth += batchSize;
             gameState.quality = Math.min(1, gameState.quality * 0.8 + qualityBonus * 0.2);
+            
             display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt dons the hazmat suit and cooks " : "Jesse rocks the respirator and whips up "} ${batchSize} batches of Blue Meth in the RV. ${gameState.quality > 0.9 ? "It's 99.1% pure—Heisenberg level!" : "Solid batch, yo!"}`);
             
             if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
-                gameState.policeHeat += 10;
+                const heatIncrease = Math.min(15, 10 + Math.floor(batchSize / 10));
+                gameState.policeHeat += heatIncrease;
                 if (gameState.policeHeat >= 200) {
                     checkPoliceBust();
                 }
@@ -339,17 +340,29 @@
                 return;
             }
             
-            const pricePerBatch = Math.floor(100 * gameState.quality * characters[gameState.character].sellBonus);
+            const marketSaturation = Math.max(0.5, 1 - (gameState.day / 200));
+            const pricePerBatch = Math.floor(100 * gameState.quality * characters[gameState.character].sellBonus * marketSaturation);
             const moneyEarned = pricePerBatch * gameState.meth;
+            
             gameState.money += moneyEarned;
             display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt moves " : "Jesse slings "} ${gameState.meth} batches of Blue Meth on the streets of ABQ. Pulled in $${moneyEarned}. ${gameState.character === "Walter" ? "The empire grows." : "Cash money, bitch!"}`);
             gameState.meth = 0;
             
             if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
-                gameState.policeHeat += 10;
+                const heatIncrease = Math.min(20, 10 + Math.floor(moneyEarned / 1000));
+                gameState.policeHeat += heatIncrease;
+                display(`Police heat increased by ${heatIncrease}% from major drug sales!`);
+                
                 if (gameState.policeHeat >= 200) {
                     checkPoliceBust();
                 }
+            }
+            
+            const randomEvent = Math.random();
+            if (randomEvent < 0.05) {
+                const stolenMoney = Math.floor(moneyEarned * 0.3);
+                gameState.money -= stolenMoney;
+                display(`Your dealer got robbed! Lost $${stolenMoney} from the sale.`);
             }
             
             checkVillain();
@@ -362,7 +375,10 @@
                 return;
             }
             
-            const cost = 200 * quantity;
+            const baseCost = 200;
+            const scalingFactor = 1.1;
+            const cost = Math.floor(baseCost * quantity * Math.pow(scalingFactor, gameState.weapons / 10));
+            
             if (gameState.money < cost) {
                 display(`Not enough cash to buy ${quantity} weapon${quantity > 1 ? 's' : ''}! Need $${cost}.`);
                 return;
@@ -370,7 +386,13 @@
             
             gameState.money -= cost;
             gameState.weapons += quantity;
-            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought ${quantity} weapon${quantity > 1 ? 's' : ''}—${gameState.weapons} in the arsenal now. ${gameState.character === "Walter" ? "Say hello to my little friend." : "Ready to roll, yo!"}`);
+            
+            if (gameState.weapons > 100) {
+                gameState.policeHeat += quantity * 2;
+                display(`Warning: Large weapons stockpile increasing police heat by ${quantity * 2}%!`);
+            }
+            
+            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought ${quantity} weapon${quantity > 1 ? 's' : ''}—${gameState.weapons} in the arsenal now. Cost: $${cost}.`);
             autoSave();
         }
 
@@ -380,7 +402,10 @@
                 return;
             }
             
-            const cost = 500 * quantity;
+            const baseCost = 500;
+            const scalingFactor = 1.15;
+            const cost = Math.floor(baseCost * quantity * Math.pow(scalingFactor, gameState.equipmentLevel / 5));
+            
             if (gameState.money < cost) {
                 display(`Need more cash to score ${quantity} methylamine barrels! Need $${cost}.`);
                 return;
@@ -388,7 +413,13 @@
             
             gameState.money -= cost;
             gameState.equipmentLevel += quantity;
-            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts barrels: "}Stole ${quantity} methylamine barrel${quantity > 1 ? 's' : ''}! Equipment level ${gameState.equipmentLevel}. Bigger cooks ahead.`);
+            
+            if (gameState.equipmentLevel > 50) {
+                gameState.policeHeat += quantity * 3;
+                display(`Warning: Major methylamine theft increasing police heat by ${quantity * 3}%!`);
+            }
+            
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts barrels: "}Stole ${quantity} methylamine barrel${quantity > 1 ? 's' : ''}! Equipment level ${gameState.equipmentLevel}. Cost: $${cost}.`);
             autoSave();
         }
 
@@ -462,8 +493,12 @@
                         introText = `${gameState.character === "Walter" ? "Walt faces off: " : "Jesse squares up: "}${currentVillain.name} confronts you!`;
                 }
                 display(introText);
-                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
-                if (playerStrength >= currentVillain.strength) {
+                
+                const playerStrength = calculateBattleStrength(gameState.character, gameState.weapons, gameState.mikeHired);
+                const dayMultiplier = 1 + (gameState.day / 100);
+                const adjustedVillainStrength = currentVillain.strength * dayMultiplier;
+                
+                if (playerStrength >= adjustedVillainStrength) {
                     gameState.money += currentVillain.reward;
                     gameState.defeatedVillains.push(currentVillain.name);
                     const mikeText = gameState.mikeHired ? " and Mike" : "";
@@ -476,15 +511,15 @@
                         document.getElementById('character-select').style.display = 'block';
                         display("Select a character to start a new empire. (Use Reset Log to clear the screen.)");
                     }
-                    // Start Police Heat after defeating Tuco
                     if (currentVillain.name === "Tuco Salamanca") {
                         gameState.policeHeat = 0;
                         display("The DEA is sniffing around after Tuco—Police Heat begins to rise!");
                     }
                 } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
-                    gameState.money -= 500;
+                    const legalFee = Math.min(gameState.money * 0.1, 500 + (gameState.day * 10));
+                    gameState.money -= legalFee;
                     gameState.saulUses--;
-                    display(`Saul slides in with a grin: "Don't worry, I've got a guy! $500 and some paperwork later, you're free from ${currentVillain.name}." Saul uses left: ${gameState.saulUses}.`);
+                    display(`Saul slides in with a grin: "Don't worry, I've got a guy! $${legalFee} and some paperwork later, you're free from ${currentVillain.name}." Saul uses left: ${gameState.saulUses}.`);
                     gameState.defeatedVillains.push(currentVillain.name);
                 } else {
                     display(`${currentVillain.name} overwhelms you! ${gameState.character === "Walter" ? "The empire crumbles." : "Game over, bitch!"}`);
@@ -495,28 +530,6 @@
                 }
             }
 
-            if (gameState && gameState.day > 60 && gameState.money >= 10000 && gameState.defeatedVillains.length >= 2 && !gameState.defeatedVillains.includes(surpriseVillain.name) && Math.random() < 0.1) {
-                display(`${gameState.character === "Walter" ? "Walt's brother-in-law steps in: " : "Jesse's worst nightmare appears: "}Hank Schrader kicks down the door, badge gleaming: "I've got you now, Heisenberg! Time's up!"`);
-                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
-                if (playerStrength >= surpriseVillain.strength) {
-                    gameState.money += surpriseVillain.reward;
-                    gameState.defeatedVillains.push(surpriseVillain.name);
-                    const mikeText = gameState.mikeHired ? " and Mike" : "";
-                    const verb = gameState.mikeHired ? "outgun" : "outguns";
-                    display(`${gameState.character}${mikeText} ${verb} Hank Schrader! Gained $${surpriseVillain.reward}. "I'm in the empire business now!"`);
-                } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
-                    gameState.money -= 500;
-                    gameState.saulUses--;
-                    display(`Hank's got you cornered, but Saul slides in: "Not so fast, officer! $500 and a loophole later, you're out." Saul uses left: ${gameState.saulUses}.`);
-                    gameState.defeatedVillains.push(surpriseVillain.name);
-                } else {
-                    display(`Hank takes you down! ${gameState.character === "Walter" ? "The family secret ends here." : "Yo, the DEA wins, bitch!"} Game Over!`);
-                    gameState = null;
-                    controls.style.display = 'none';
-                    document.getElementById('character-select').style.display = 'block';
-                    display("Select a character to restart. (Use Reset Log to clear the screen.)");
-                }
-            }
             autoSave();
         }
 
@@ -542,9 +555,19 @@
         function nextDay() {
             if (gameState) {
                 gameState.day++;
-                // Only apply Police Heat after defeating Tuco
+                
+                if (gameState.weapons > 20 || gameState.equipmentLevel > 30) {
+                    const maintenanceCost = Math.floor((gameState.weapons * 10) + (gameState.equipmentLevel * 20));
+                    gameState.money = Math.max(0, gameState.money - maintenanceCost);
+                    display(`Day ${gameState.day}: Lab maintenance and weapons upkeep cost $${maintenanceCost}.`);
+                }
+                
                 if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
-                    gameState.policeHeat += 5; // Increase by 5 each day
+                    const baseHeatIncrease = 5;
+                    const empireSize = (gameState.weapons / 10) + (gameState.equipmentLevel / 5);
+                    const heatIncrease = Math.floor(baseHeatIncrease * (1 + (empireSize / 100)));
+                    gameState.policeHeat += heatIncrease;
+                    
                     if (gameState.policeHeat >= 200) {
                         checkPoliceBust();
                     }
@@ -553,23 +576,38 @@
         }
 
         function checkPoliceBust() {
-            if (!gameState.defeatedVillains.includes("Tuco Salamanca")) return; // Only after Tuco
+            if (!gameState.defeatedVillains.includes("Tuco Salamanca")) return;
             display(`${gameState.character === "Walter" ? "Hank and the DEA storm in: " : "The cops crash the lab, yo: "} "We've got you now—game over!"`);
+            
             if (gameState.weapons >= 10) {
-                const playerStrength = gameState.weapons * characters[gameState.character].weaponSkill * (gameState.mikeHired ? 1.5 : 1);
-                const policeStrength = 1.0; // Base police strength, adjustable for balance
+                const playerStrength = calculateBattleStrength(gameState.character, gameState.weapons, gameState.mikeHired);
+                const dayFactor = 1 + (gameState.day / 50);
+                const policeStrength = 1.0 * dayFactor * (1 + (gameState.policeHeat / 100));
+                
                 if (playerStrength >= policeStrength) {
-                    gameState.policeHeat = 0; // Reset Police Heat after winning
+                    gameState.policeHeat = Math.max(50, gameState.policeHeat - 50);
+                    const weaponsLost = Math.floor(gameState.weapons * 0.3);
+                    gameState.weapons -= weaponsLost;
+                    
                     const mikeText = gameState.mikeHired ? " and Mike" : "";
-                    const verb = gameState.mikeHired ? "obliterate" : "obliterates";
-                    display(`${gameState.character}${mikeText} ${verb} the DEA task force in a hail of gunfire! Police Heat neutralized.`);
+                    const verb = gameState.mikeHired ? "fight" : "fights";
+                    display(`${gameState.character}${mikeText} ${verb} off the DEA task force! You lost ${weaponsLost} weapons and police heat reduced to ${gameState.policeHeat}%.`);
                 } else {
                     display(`${gameState.character === "Walter" ? "The DEA overpowers your arsenal—empire crumbles." : "The cops outgun you, bitch! Game Over!"}`);
-                    if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
-                        gameState.money -= 500;
-                        gameState.saulUses--;
-                        gameState.policeHeat = 0; // Reset Police Heat
-                        display(`Saul swoops in: "Relax, I've got a judge in my pocket! $500 and you're free—for now." Saul uses left: ${gameState.saulUses}.`);
+                    if (gameState.saulHired && gameState.saulUses > 0) {
+                        const legalFee = Math.min(gameState.money * 0.3, 500 + (gameState.day * 20));
+                        if (gameState.money >= legalFee) {
+                            gameState.money -= legalFee;
+                            gameState.saulUses--;
+                            gameState.policeHeat = Math.max(80, gameState.policeHeat - 120);
+                            gameState.weapons = Math.floor(gameState.weapons * 0.5);
+                            display(`Saul swoops in: "This is gonna be expensive! $${legalFee} and you're free—for now." Saul uses left: ${gameState.saulUses}. Half your weapons confiscated!`);
+                        } else {
+                            gameState = null;
+                            controls.style.display = 'none';
+                            document.getElementById('character-select').style.display = 'block';
+                            display("Select a character to restart. (Use Reset Log to clear the screen.)");
+                        }
                     } else {
                         gameState = null;
                         controls.style.display = 'none';
@@ -577,11 +615,20 @@
                         display("Select a character to restart. (Use Reset Log to clear the screen.)");
                     }
                 }
-            } else if (gameState.saulHired && gameState.saulUses > 0 && gameState.money >= 500) {
-                gameState.money -= 500;
-                gameState.saulUses--;
-                gameState.policeHeat = 0; // Reset Police Heat
-                display(`Saul swoops in: "Relax, I've got a judge in my pocket! $500 and you're free—for now." Saul uses left: ${gameState.saulUses}.`);
+            } else if (gameState.saulHired && gameState.saulUses > 0) {
+                const legalFee = Math.min(gameState.money * 0.25, 500 + (gameState.day * 15));
+                if (gameState.money >= legalFee) {
+                    gameState.money -= legalFee;
+                    gameState.saulUses--;
+                    gameState.policeHeat = Math.max(70, gameState.policeHeat - 130);
+                    display(`Saul swoops in: "Relax, I've got a judge in my pocket! $${legalFee} and you're free—for now." Saul uses left: ${gameState.saulUses}.`);
+                } else {
+                    display(`${gameState.character === "Walter" ? "The empire crumbles under DEA pressure." : "Busted, bitch! Game Over!"}`);
+                    gameState = null;
+                    controls.style.display = 'none';
+                    document.getElementById('character-select').style.display = 'block';
+                    display("Select a character to restart. (Use Reset Log to clear the screen.)");
+                }
             } else {
                 display(`${gameState.character === "Walter" ? "The empire crumbles under DEA pressure." : "Busted, bitch! Game Over!"}`);
                 gameState = null;
@@ -1375,6 +1422,11 @@
                 document.getElementById('character-select').style.display = 'block';
                 display("Error loading saved game. Please start a new game.");
             });
+        }
+
+        function calculateBattleStrength(character, weapons, mikeHired) {
+            const baseStrength = characters[character].weaponSkill * weapons * (mikeHired ? 1.5 : 1);
+            return baseStrength / (1 + (weapons * 0.01));
         }
     </script>
 </body>
