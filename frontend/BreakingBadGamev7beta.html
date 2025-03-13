@@ -392,7 +392,7 @@
                 display(`Warning: Large weapons stockpile increasing police heat by ${quantity * 2}%!`);
             }
             
-            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought ${quantity} weapon${quantity > 1 ? 's' : ''}—${gameState.weapons} in the arsenal now. Cost: $${cost}.`);
+            display(`${gameState.character === "Walter" ? "Walt meets Lawson at the motel: " : "Jesse hits up Skinny Pete: "}Bought ${quantity} weapon${quantity > 1 ? 's' : ''}—${gameState.weapons} in the arsenal now. Cost: $${cost}. Money remaining: $${gameState.money}`);
             autoSave();
         }
 
@@ -419,7 +419,7 @@
                 display(`Warning: Major methylamine theft increasing police heat by ${quantity * 3}%!`);
             }
             
-            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts barrels: "}Stole ${quantity} methylamine barrel${quantity > 1 ? 's' : ''}! Equipment level ${gameState.equipmentLevel}. Cost: $${cost}.`);
+            display(`Day ${gameState.day}: ${gameState.character === "Walter" ? "Walt orchestrates a train heist: " : "Jesse boosts barrels: "}Stole ${quantity} methylamine barrel${quantity > 1 ? 's' : ''}! Equipment level ${gameState.equipmentLevel}. Cost: $${cost}. Money remaining: $${gameState.money}`);
             autoSave();
         }
 
@@ -438,8 +438,8 @@
             }
             gameState.money -= 1000;
             gameState.saulHired = true;
-            gameState.saulUses = gameState.saulMaxUses; // Set uses to max (initially 2)
-            display(`${gameState.character === "Walter" ? "Walt dials the sleazy lawyer: " : "Jesse calls the sketchy dude: "}Saul Goodman struts in, business card flashing: "Better Call Saul! I'm your legal shield for $1000—${gameState.saulMaxUses} uses, baby!"`);
+            gameState.saulUses = gameState.saulMaxUses;
+            display(`${gameState.character === "Walter" ? "Walt dials the sleazy lawyer: " : "Jesse calls the sketchy dude: "}Saul Goodman struts in, business card flashing: "Better Call Saul! I'm your legal shield for $1000—${gameState.saulMaxUses} uses, baby!" Money remaining: $${gameState.money}`);
             autoSave();
         }
 
@@ -458,7 +458,7 @@
             }
             gameState.money -= 1500;
             gameState.mikeHired = true;
-            display(`${gameState.character === "Walter" ? "Walt recruits the cleaner: " : "Jesse brings in the old dude: "}Mike Ehrmantraut nods: "I'm in. $1500, and your fights just got easier." Weapon strength boosted!`);
+            display(`${gameState.character === "Walter" ? "Walt recruits the cleaner: " : "Jesse brings in the old dude: "}Mike Ehrmantraut nods: "I'm in. $1500, and your fights just got easier." Weapon strength boosted! Money remaining: $${gameState.money}`);
             autoSave();
         }
 
@@ -559,7 +559,7 @@
                 if (gameState.weapons > 20 || gameState.equipmentLevel > 30) {
                     const maintenanceCost = Math.floor((gameState.weapons * 10) + (gameState.equipmentLevel * 20));
                     gameState.money = Math.max(0, gameState.money - maintenanceCost);
-                    display(`Day ${gameState.day}: Lab maintenance and weapons upkeep cost $${maintenanceCost}.`);
+                    display(`Day ${gameState.day}: Lab maintenance and weapons upkeep cost $${maintenanceCost}. Money remaining: $${gameState.money}`);
                 }
                 
                 if (gameState.defeatedVillains.includes("Tuco Salamanca")) {
@@ -654,18 +654,16 @@
             }
             gameState.money -= 15000;
             if (gameState.saulMaxUses === 2) {
-                // First upgrade: increase max uses to 4 and set current uses to 4
                 gameState.saulMaxUses = 4;
                 gameState.saulUses = 4;
-                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman smirks, "I've upgraded my game—now you've got 4 fresh uses for $15,000!"`);
+                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman smirks, "I've upgraded my game—now you've got 4 fresh uses for $15,000!" Money remaining: $${gameState.money}`);
             } else if (gameState.saulMaxUses === 4 && gameState.saulUses === 0) {
-                // Refill uses to max (4) when depleted
                 gameState.saulUses = 4;
-                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman grins, "I've reloaded my tricks—four more uses for $15,000!"`);
+                display(`${gameState.character === "Walter" ? "Walt's call pays off: " : "Jesse's sketchy deal works, yo: "}Saul Goodman grins, "I've reloaded my tricks—four more uses for $15,000!" Money remaining: $${gameState.money}`);
             } else {
                 display("Saul's already at max capacity—save your cash, pal!");
             }
-            checkStatus(); // Update status to reflect changes
+            checkStatus();
             autoSave();
         }
 
