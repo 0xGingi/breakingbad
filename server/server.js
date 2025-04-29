@@ -24,57 +24,109 @@ app.use((req, res, next) => {
 
 // Database setup
 const dbPath = path.join(__dirname, 'data', 'breakingbad.db');
-const db = new sqlite3.Database(dbPath);
+let db;
 
-db.serialize(() => {
-    // Users table
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )`);
-    
-    // Sessions table for cookie auth
-    db.run(`CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        token TEXT UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )`);
-    
-    // Saved games table
-    db.run(`CREATE TABLE IF NOT EXISTS saved_games (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        name TEXT,
-        game_state TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )`);
-    
-    // PvP stats table
-    db.run(`CREATE TABLE IF NOT EXISTS pvp_stats (
-        user_id INTEGER PRIMARY KEY,
-        wins INTEGER DEFAULT 0,
-        losses INTEGER DEFAULT 0,
-        reputation INTEGER DEFAULT 100,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-    )`);
-    
-    // PvP challenges table
-    db.run(`CREATE TABLE IF NOT EXISTS pvp_challenges (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        challenger_id INTEGER,
-        opponent_id INTEGER,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        battle_result TEXT,
-        FOREIGN KEY (challenger_id) REFERENCES users (id),
-        FOREIGN KEY (opponent_id) REFERENCES users (id)
-    )`);
+const initializeDatabase = () => {
+    db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+        if (err) {
+            console.error('Error opening database:', err.message);
+            process.exit(1);
+        }
+        console.log('Connected to SQLite database');
+        console.log('Attempting to serialize table creation...');
+        
+        db.serialize(() => {
+            console.log('Inside db.serialize callback.');
+            try {
+                console.log('Creating users table...');
+                // Users table
+                db.run(`CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE,
+                    password TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )`);
+                console.log('Users table created (or already exists).');
+                
+                console.log('Creating sessions table...');
+                // Sessions table for cookie auth
+                db.run(`CREATE TABLE IF NOT EXISTS sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    token TEXT UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )`);
+                console.log('Sessions table created (or already exists).');
+                
+                console.log('Creating saved_games table...');
+                // Saved games table
+                db.run(`CREATE TABLE IF NOT EXISTS saved_games (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    name TEXT,
+                    game_state TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )`);
+                console.log('Saved_games table created (or already exists).');
+                
+                console.log('Creating pvp_stats table...');
+                // PvP stats table
+                db.run(`CREATE TABLE IF NOT EXISTS pvp_stats (
+                    user_id INTEGER PRIMARY KEY,
+                    wins INTEGER DEFAULT 0,
+                    losses INTEGER DEFAULT 0,
+                    reputation INTEGER DEFAULT 100,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )`);
+                console.log('Pvp_stats table created (or already exists).');
+                
+                console.log('Creating pvp_challenges table...');
+                // PvP challenges table
+                db.run(`CREATE TABLE IF NOT EXISTS pvp_challenges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    challenger_id INTEGER,
+                    opponent_id INTEGER,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    battle_result TEXT,
+                    FOREIGN KEY (challenger_id) REFERENCES users (id),
+                    FOREIGN KEY (opponent_id) REFERENCES users (id)
+                )`);
+                console.log('Pvp_challenges table created (or already exists).');
+                console.log('Table serialization successful.');
+            } catch (err) {
+                console.error('Error creating tables:', err);
+                process.exit(1);
+            }
+        });
+        console.log('Scheduled table creation serialization.');
+    });
+};
+
+initializeDatabase();
+
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM signal. Process will exit.');
+});
+
+process.on('SIGINT', () => {
+    console.log('Received SIGINT signal. Process will exit.');
 });
 
 // API Routes
@@ -713,6 +765,7 @@ app.get('/', (req, res) => {
 });
 
 // Start server
+console.log('Attempting to start server...');
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+    console.log(`Server successfully started and running on port ${port}`);
 }); 
